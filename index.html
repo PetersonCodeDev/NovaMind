@@ -2520,175 +2520,91 @@
   });
 
   // ============================================================
-  // GOOGLE NEWS RSS — Artigos em tempo real (gratuito, sem chave)
+  // ARTIGOS — conteúdo curado estático, carrega instantâneo
   // ============================================================
-  const NEWS_CACHE_KEY = 'novamind_news_cache';
-  const NEWS_CACHE_TTL = 30 * 60 * 1000; // 30 minutos
+  (function loadArticles() {
+    const articlesGrid = document.querySelector('#artigos .articles-grid');
+    if (!articlesGrid) return;
 
-  function inferTag(title) {
-    const t = (title || '').toLowerCase();
-    if (t.includes('cloud') || t.includes('aws') || t.includes('azure') || t.includes('gcp')) return { label: 'Cloud', cls: 'tag-cloud' };
-    if (t.includes('agent') || t.includes('agente')) return { label: 'Agentes', cls: 'tag-ai' };
-    if (t.includes('llm') || t.includes('model') || t.includes('modelo') || t.includes('gpt') || t.includes('claude') || t.includes('gemini')) return { label: 'LLMs', cls: 'tag-llm' };
-    if (t.includes('ai') || t.includes('artificial') || t.includes('inteligência') || t.includes('machine learning')) return { label: 'IA', cls: 'tag-ai' };
-    return { label: 'Tecnologia', cls: 'tag-ai' };
-  }
+    const articles = [
+      {
+        tag: 'tag-ai', label: 'Inteligência Artificial',
+        title: 'Agentes autônomos em produção: o que muda na arquitetura de sistemas quando a IA começa a agir sozinha',
+        excerpt: 'Com frameworks como LangGraph e AutoGen amadurecendo, chegou a hora de pensar seriamente em como estruturar sistemas onde modelos tomam decisões encadeadas.',
+        meta: 'Rafael Monteiro · 12 min · 21 Mai 2026',
+        url: 'https://www.deeplearning.ai/the-batch/',
+        featured: true,
+        full: 'A transição de copilotos para agentes autônomos exige uma revolução completa nos padrões de arquitetura de software. Quando delegamos autonomia para LLMs interagirem com bancos de dados e APIs externas, o determinismo do código clássico é substituído pelo comportamento probabilístico dos modelos. Arquitetos precisam adotar padrões resilientes como LangGraph para modelar fluxos em grafos cíclicos com nós de validação. O monitoramento também muda: além de latência e CPU, equipes precisam monitorar taxas de sucesso de tarefas, consumo de tokens e precisão de chamadas de ferramentas.'
+      },
+      {
+        tag: 'tag-cloud', label: 'Cloud',
+        title: 'AWS Bedrock vs Azure OpenAI: qual usar em 2026?',
+        excerpt: 'Comparativo técnico e de custos atualizado com os planos mais recentes dos dois maiores provedores.',
+        meta: '7 min · 19 Mai 2026',
+        url: 'https://aws.amazon.com/bedrock/',
+        featured: false,
+        full: 'AWS Bedrock oferece acesso unificado a modelos como Claude, Titan e Llama com integração nativa aos serviços AWS. Azure OpenAI destaca-se pela integração com o ecossistema Microsoft e suporte corporativo robusto. Em termos de custo, o Bedrock tem vantagem para workloads intensivos em inferência, enquanto o Azure é mais competitivo para empresas já no ecossistema Microsoft 365.'
+      },
+      {
+        tag: 'tag-llm', label: 'LLMs',
+        title: 'Fine-tuning com 1k exemplos: ainda vale a pena?',
+        excerpt: 'Testamos 5 modelos diferentes com datasets pequenos. Os resultados surpreendem e desafiam o senso comum.',
+        meta: '9 min · 17 Mai 2026',
+        url: 'https://huggingface.co/blog',
+        featured: false,
+        full: 'Com o avanço das técnicas de prompting e RAG, muitos questionam se fine-tuning ainda faz sentido com poucos dados. Testamos LoRA e QLoRA em 5 modelos base com apenas 1.000 exemplos cada. Resultado: para tarefas muito específicas de domínio, fine-tuning ainda supera prompting em 15-30% de precisão. Para tarefas gerais, RAG bem implementado vence na maioria dos casos.'
+      },
+      {
+        tag: 'tag-ai', label: 'Agentes',
+        title: 'LangGraph na prática: construindo um agente de pesquisa com memória',
+        excerpt: 'Tutorial completo de um agente que pesquisa, sintetiza e salva informações com estado persistente entre sessões.',
+        meta: '15 min · 15 Mai 2026',
+        url: 'https://langchain-ai.github.io/langgraph/',
+        featured: false,
+        full: 'LangGraph permite construir agentes stateful com grafos de execução explícitos. Neste tutorial, construímos um agente de pesquisa que usa ferramentas de busca, mantém memória entre conversas e gera relatórios estruturados. O diferencial do LangGraph é o controle fino sobre o fluxo de execução e a capacidade de debugar cada nó individualmente.'
+      },
+      {
+        tag: 'tag-cloud', label: 'Cloud',
+        title: 'Kubernetes para inferência de LLMs: configurando vLLM em produção',
+        excerpt: 'Guia completo de deploy com auto-scaling baseado em tokens por segundo e otimização de custos.',
+        meta: '15 min · 14 Mai 2026',
+        url: 'https://docs.vllm.ai/',
+        featured: false,
+        full: 'vLLM é atualmente o framework mais eficiente para servir LLMs em produção, com suporte a PagedAttention para maximizar throughput. Configurar auto-scaling baseado em tokens por segundo em vez de CPU é o diferencial para workloads variáveis. Este guia cobre desde a configuração do Kubernetes até monitoramento com Prometheus e Grafana.'
+      }
+    ];
 
-  function formatDate(dateStr) {
-    try {
-      return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch(e) { return ''; }
-  }
-
-  function truncate(str, n) {
-    return str && str.length > n ? str.slice(0, n) + '...' : (str || '');
-  }
-
-  function buildSkeletons(container, count) {
-    container.innerHTML = '';
-    for (let i = 0; i < count; i++) {
-      const sk = document.createElement('div');
-      sk.className = i === 0 ? 'article-card featured stagger-item skeleton-card' : 'article-card stagger-item skeleton-card';
-      sk.style.cssText = 'pointer-events:none;';
-      sk.innerHTML = `
-        <div class="skeleton-line" style="width:60px;height:20px;border-radius:100px;margin-bottom:1.2rem;"></div>
-        <div class="skeleton-line" style="width:90%;height:18px;margin-bottom:0.5rem;"></div>
-        <div class="skeleton-line" style="width:75%;height:18px;margin-bottom:1rem;"></div>
-        <div class="skeleton-line" style="width:100%;height:12px;margin-bottom:0.4rem;"></div>
-        <div class="skeleton-line" style="width:80%;height:12px;"></div>
-      `;
-      container.appendChild(sk);
-    }
-  }
-
-  function renderNewsCards(articles, container) {
-    container.innerHTML = '';
-    articles.slice(0, 5).forEach((article, i) => {
-      const tag = inferTag(article.title);
+    articlesGrid.innerHTML = '';
+    articles.forEach((article, i) => {
       const card = document.createElement('a');
-      card.className = i === 0 ? 'article-card featured stagger-item' : 'article-card stagger-item';
+      card.className = article.featured ? 'article-card featured stagger-item' : 'article-card stagger-item';
       card.href = '#';
-      card.dataset.url = article.link || article.url || '#';
-      card.dataset.title = article.title || '';
-      card.dataset.desc = article.description || article.content || '';
-      card.dataset.source = article.source || article.author || 'Google News';
-      card.dataset.date = article.pubDate || article.publishedAt || '';
       card.innerHTML = `
-        <span class="article-tag ${tag.cls}">${tag.label}</span>
-        <h3 class="article-title">${truncate(article.title, 90)}</h3>
-        <p class="article-excerpt">${truncate(article.description || article.content || '', 160)}</p>
+        <span class="article-tag ${article.tag}">${article.label}</span>
+        <h3 class="article-title">${article.title}</h3>
+        <p class="article-excerpt">${article.excerpt}</p>
         <div class="article-meta">
-          <span>${article.source || article.author || 'Google News'}</span>
-          <span class="dot-sep">·</span>
-          <span>${formatDate(article.pubDate || article.publishedAt)}</span>
+          <span>${article.meta}</span>
           <span class="article-arrow">→</span>
         </div>
       `;
       card.addEventListener('click', function(e) {
         e.preventDefault();
         const html = `
-          <span class="article-tag ${tag.cls}" style="display:inline-block;margin-bottom:1.2rem;">${tag.label}</span>
-          <h2 class="section-title" style="font-size:1.5rem;margin-bottom:1rem;">${this.dataset.title}</h2>
-          <p style="font-size:0.95rem;color:var(--text-secondary);line-height:1.75;font-weight:300;margin-bottom:2rem;">${this.dataset.desc || 'Clique no botão abaixo para ler o artigo completo.'}</p>
-          <div class="article-meta" style="margin-bottom:2rem;">
-            <span>${this.dataset.source}</span>
-            <span class="dot-sep">·</span>
-            <span>${formatDate(this.dataset.date)}</span>
-          </div>
-          <a href="${this.dataset.url}" target="_blank" rel="noopener noreferrer" class="btn-primary" style="display:inline-flex;align-items:center;gap:0.4rem;width:100%;justify-content:center;">
+          <span class="article-tag ${article.tag}" style="display:inline-block;margin-bottom:1.2rem;">${article.label}</span>
+          <h2 class="section-title" style="font-size:1.5rem;margin-bottom:1rem;">${article.title}</h2>
+          <p style="font-size:0.95rem;color:var(--text-secondary);line-height:1.75;font-weight:300;margin-bottom:2rem;">${article.full}</p>
+          <div class="article-meta" style="margin-bottom:2rem;"><span>${article.meta}</span></div>
+          <a href="${article.url}" target="_blank" rel="noopener noreferrer" class="btn-primary" style="display:inline-flex;align-items:center;gap:0.4rem;width:100%;justify-content:center;">
             Ler artigo completo
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
           </a>
         `;
         openModal(html);
       });
-      container.appendChild(card);
+      articlesGrid.appendChild(card);
     });
-  }
-
-  async function fetchNews() {
-    const articlesGrid = document.querySelector('#artigos .articles-grid');
-    if (!articlesGrid) return;
-
-    // Check cache
-    try {
-      const cached = localStorage.getItem(NEWS_CACHE_KEY);
-      if (cached) {
-        const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp < NEWS_CACHE_TTL) {
-          renderNewsCards(data, articlesGrid);
-          return;
-        }
-      }
-    } catch(e) {}
-
-    // Show skeletons
-    buildSkeletons(articlesGrid, 5);
-
-    // Google News RSS via rss2json (gratuito, sem chave necessária)
-    const queries = [
-      'inteligencia+artificial+cloud+computing',
-      'artificial+intelligence+cloud'
-    ];
-
-    for (const q of queries) {
-      try {
-        const rssUrl = encodeURIComponent(`https://news.google.com/rss/search?q=${q}&hl=pt-BR&gl=BR&ceid=BR:pt-419`);
-        const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}&count=6`);
-        const json = await res.json();
-        const articles = (json.items || []).filter(a => a.title && a.title.length > 5);
-        if (articles.length > 0) {
-          try {
-            localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: articles }));
-          } catch(e) {}
-          renderNewsCards(articles, articlesGrid);
-          return;
-        }
-      } catch(e) {}
-    }
-
-    // Fallback — conteúdo estático sem mensagem de erro
-    articlesGrid.innerHTML = `
-      <a href="#" class="article-card featured stagger-item">
-        <span class="article-tag tag-ai">Inteligência Artificial</span>
-        <h3 class="article-title">Agentes autônomos em produção: o que muda na arquitetura de sistemas quando a IA começa a agir sozinha</h3>
-        <p class="article-excerpt">Com frameworks como LangGraph e AutoGen amadurecendo, chegou a hora de pensar seriamente em como estruturar sistemas onde modelos tomam decisões encadeadas.</p>
-        <div class="article-meta"><span>12 min de leitura</span><span class="dot-sep">·</span><span>21 Mai 2026</span><span class="article-arrow">→</span></div>
-      </a>
-      <a href="#" class="article-card stagger-item">
-        <span class="article-tag tag-cloud">Cloud</span>
-        <h3 class="article-title">AWS Bedrock vs Azure OpenAI: qual usar em 2026?</h3>
-        <p class="article-excerpt">Comparativo técnico e de custos atualizado com os planos mais recentes.</p>
-        <div class="article-meta"><span>7 min</span><span class="dot-sep">·</span><span>19 Mai 2026</span><span class="article-arrow">→</span></div>
-      </a>
-      <a href="#" class="article-card stagger-item">
-        <span class="article-tag tag-llm">LLMs</span>
-        <h3 class="article-title">Fine-tuning com 1k exemplos: ainda vale a pena?</h3>
-        <p class="article-excerpt">Testamos 5 modelos diferentes com datasets pequenos. Os resultados surpreendem.</p>
-        <div class="article-meta"><span>9 min</span><span class="dot-sep">·</span><span>17 Mai 2026</span><span class="article-arrow">→</span></div>
-      </a>
-    `;
-  }
-
-  // Inject skeleton shimmer styles
-  const skeletonStyle = document.createElement('style');
-  skeletonStyle.textContent = `
-    .skeleton-card { cursor: default !important; }
-    .skeleton-line {
-      background: linear-gradient(90deg, var(--bg-3) 25%, var(--border-2) 50%, var(--bg-3) 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s infinite;
-      border-radius: 4px;
-    }
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-  `;
-  document.head.appendChild(skeletonStyle);
-
-  // Start fetching news
-  fetchNews();
+  })();
 </script>
 
 <!-- MODAL ESTRUTURA GLOBAL -->
